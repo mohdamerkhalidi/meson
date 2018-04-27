@@ -543,7 +543,7 @@ def parse_cmd_line_options(args):
             delattr(args, name)
 
 builtin_options = {
-    'buildtype':  [UserComboOption, 'Build type to use.', ['plain', 'debug', 'debugoptimized', 'release', 'minsize'], 'debug'],
+    'buildtype':  [UserComboOption, 'Build type to use.', ['plain', 'debug', 'debugoptimized', 'release', 'minsize', 'custom'], 'debug'],
     'strip':      [UserBooleanOption, 'Strip targets on install.', False],
     'unity':      [UserComboOption, 'Unity build.', ['on', 'off', 'subprojects'], 'off'],
     'prefix':     [UserStringOption, 'Installation prefix.', default_prefix()],
@@ -568,6 +568,8 @@ builtin_options = {
     'errorlogs':       [UserBooleanOption, "Whether to print the logs from failing tests.", True],
     'install_umask':   [UserUmaskOption, 'Default umask to apply on permissions of installed files.', '022'],
     'auto_features':   [UserFeatureOption, "Override value of all 'auto' features.", 'auto'],
+    'optimization':    [UserComboOption, 'Optimization level', ['0', 'g', '1', '2', '3', 's'], '0'],
+    'debug':           [UserBooleanOption, 'Debug', True]
 }
 
 # Special prefix-dependent defaults for installation directories that reside in
