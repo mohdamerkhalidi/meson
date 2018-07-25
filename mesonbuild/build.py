@@ -827,22 +827,30 @@ This will become a hard error in a future Meson release.''')
     def get_extra_args(self, language):
         return self.extra_args.get(language, [])
 
-    def get_dependencies(self, exclude=None, internal=True):
+    def get_dependencies(self, exclude=None, internal=True, link_whole=False):
         transitive_deps = []
         if exclude is None:
             exclude = []
-        if internal:
-            link_targets = itertools.chain(self.link_targets, self.link_whole_targets)
-        else:
-            # We don't want the 'internal' libraries when generating the
-            # `Libs:` and `Libs.private:` lists in pkg-config files.
+        # self.link_whole_targets are not included by default here because the
+        # objects from those will already be in the library. They are only
+        # needed while generating backend (ninja) target dependencies.
+        if not link_whole:
             link_targets = self.link_targets
+        else:
+            link_targets = itertools.chain(self.link_targets, self.link_whole_targets)
         for t in link_targets:
             if t in transitive_deps or t in exclude:
                 continue
+            # When we don't want internal libraries, f.ex. when we're
+            # generating the list of private installed libraries for use in
+            # a pkg-config file, don't include static libraries that aren't
+            # installed because those get directly included in the static
+            # or shared library already. See: self.link()
+            if not internal and isinstance(t, StaticLibrary) and not t.need_install:
+                continue
             transitive_deps.append(t)
             if isinstance(t, StaticLibrary):
-                transitive_deps += t.get_dependencies(transitive_deps + exclude, internal)
+                transitive_deps += t.get_dependencies(transitive_deps + exclude)
         return transitive_deps
 
     def get_source_subdir(self):
@@ -929,7 +937,14 @@ You probably should put it in link_with instead.''')
                 raise InvalidArguments(msg)
             if self.is_cross != t.is_cross:
                 raise InvalidArguments('Tried to mix cross built and native libraries in target {!r}'.format(self.name))
-            self.link_targets.append(t)
+            # When linking to a static library that's not installed, we
+            # transparently add that target's objects to ourselves.
+            # Static libraries that are installed will either be linked through
+            # self.link_targets or using the pkg-config file.
+            if isinstance(self, StaticLibrary) and isinstance(t, StaticLibrary) and not t.need_install:
+                self.objects.append(t.extract_all_objects())
+            else:
+                self.link_targets.append(t)
 
     def link_whole(self, target):
         for t in listify(target, unholder=True):
@@ -941,7 +956,12 @@ You probably should put it in link_with instead.''')
                 raise InvalidArguments(msg)
             if self.is_cross != t.is_cross:
                 raise InvalidArguments('Tried to mix cross built and native libraries in target {!r}'.format(self.name))
-            self.link_whole_targets.append(t)
+            # When we're a static library and we link_whole: to another static
+            # library, we need to add that target's objects to ourselves.
+            if isinstance(self, StaticLibrary):
+                self.objects.append(t.extract_all_objects())
+            else:
+                self.link_whole_targets.append(t)
 
     def add_pch(self, language, pchlist):
         if not pchlist:

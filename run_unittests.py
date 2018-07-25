@@ -79,6 +79,14 @@ def is_ci():
         return True
     return False
 
+def can_use_pkgconfig():
+    # CI provides pkg-config, and we should fail the test if it isn't found
+    if is_ci():
+        return True
+    if shutil.which('pkg-config'):
+        return True
+    return False
+
 def skipIfNoPkgconfig(f):
     '''
     Skip this test if no pkg-config is found, unless we're on Travis or
@@ -89,7 +97,7 @@ def skipIfNoPkgconfig(f):
     Note: Yes, we provide pkg-config even while running Windows CI
     '''
     def wrapped(*args, **kwargs):
-        if not is_ci() and shutil.which('pkg-config') is None:
+        if not can_use_pkgconfig():
             raise unittest.SkipTest('pkg-config not found')
         return f(*args, **kwargs)
     return wrapped
@@ -2444,6 +2452,61 @@ recommended as it is not supported on some platforms''')
                                    cwd=builddir,
                                    stdout=subprocess.DEVNULL,
                                    stderr=subprocess.DEVNULL)
+
+    def test_static_and_shared_library_usability(self):
+        '''
+        Test that static and shared libraries with various kinds of static
+        library internal dependencies are usable after installation, and that
+        the pkg-config files generated for such libraries have the correct
+        Libs: and Libs.private: lines.
+        '''
+        libtypes = ('static', 'shared', 'both')
+        for libtype in libtypes:
+            oldprefix = self.prefix
+            # Install external library so we can find it
+            testdir = os.path.join(self.unit_test_dir, '35 both library usability', 'provider')
+            # install into installdir without using DESTDIR
+            installdir = self.installdir
+            self.prefix = installdir
+            self.init(testdir, extra_args='--default-library=' + libtype)
+            self.prefix = oldprefix
+            for each in ('whole-installed', 'whole-internal', 'with-installed', 'with-internal'):
+                pc = os.path.join(self.privatedir, '{}.pc'.format(each))
+                with open(pc, 'r') as f:
+                    for l in f:
+                        l = l.strip()
+                        if l.startswith('Libs:'):
+                            if libtype == 'static' and each == 'with-installed':
+                                self.assertEqual(l, 'Libs: -L${libdir} -linstalled-some -l' + each)
+                            else:
+                                self.assertEqual(l, 'Libs: -L${libdir} -l' + each)
+                        if l.startswith('Libs.private:'):
+                            if each == 'with-installed':
+                                self.assertEqual(l, 'Libs.private: -L${libdir} -linstalled-some')
+                            else:
+                                self.assertNotIn('internal-some', l)
+            self.build()
+            self.run_tests()
+            # Rest of the test requires pkg-config
+            if not can_use_pkgconfig():
+                ## New builddir for the next iteration
+                self.new_builddir()
+                continue
+            self.install(use_destdir=False)
+            os.environ['PKG_CONFIG_PATH'] = os.path.join(installdir, self.libdir, 'pkgconfig')
+            testdir = os.path.join(self.unit_test_dir, '35 both library usability', 'consumer')
+            for _libtype in libtypes:
+                ## New builddir for the consumer
+                self.new_builddir()
+                self.init(testdir, extra_args='--default-library=' + _libtype)
+                self.build()
+                self.run_tests()
+            ## New builddir for the next iteration
+            self.new_builddir()
+        # Deliver a skip status to signal incomplete test
+        if not can_use_pkgconfig():
+            raise unittest.SkipTest('pkg-config not found, test incomplete')
+
 
 class FailureTests(BasePlatformTests):
     '''
