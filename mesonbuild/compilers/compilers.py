@@ -276,6 +276,25 @@ clike_debug_args = {False: [],
 msvc_debug_args = {False: [],
                    True: []} # Fixme!
 
+arm_optimization_args = {'0': ['-O0'],
+                         'g': ['-g'],
+                         '1': ['-O1'],
+                         '2': ['-O2'],
+                         '3': ['-O3'],
+                         't': ['-Otime'],
+                         }
+
+armclang_optimization_args = {'0': ['-O0'],
+                              'g': ['-g'],
+                              '1': ['-O1'],
+                              '2': ['-O2'],
+                              '3': ['-O3'],
+                              'f': ['-Ofast'],
+                              's': ['-Os'],
+                              'z': ['-Oz'],
+                              't': ['-flto'],
+                              }
+
 base_options = {'b_pch': coredata.UserBooleanOption('b_pch', 'Use precompiled headers', True),
                 'b_lto': coredata.UserBooleanOption('b_lto', 'Use link time optimization', False),
                 'b_sanitize': coredata.UserComboOption('b_sanitize',
@@ -1579,6 +1598,12 @@ class ArmclangCompiler:
     def get_linker_exelist(self):
         return [self.linker_exe]
 
+    def get_optimization_args(self, optimization_level):
+        return armclang_optimization_args[optimization_level]
+
+    def get_debug_args(self, is_debug):
+        return clike_debug_args[is_debug]
+
 
 # Tested on linux for ICC 14.0.3, 15.0.6, 16.0.4, 17.0.1
 class IntelCompiler(GnuLikeCompiler):
@@ -1679,3 +1704,9 @@ class ArmCompiler:
 
     def get_coverage_link_args(self):
         return []
+
+    def get_optimization_args(self, optimization_level):
+        return arm_optimization_args[optimization_level]
+
+    def get_debug_args(self, is_debug):
+        return clike_debug_args[is_debug]
